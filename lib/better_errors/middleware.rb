@@ -28,12 +28,16 @@ module BetterErrors
     # The set of IP addresses that are allowed to access Better Errors.
     #
     # Set to `{ "127.0.0.1/8", "::1/128" }` by default.
-    ALLOWED_IPS = Set.new
+    ALLOWED_IPS  = Set.new
+    REJECTED_URL_PATTERNS = Set.new
 
     # Adds an address to the set of IP addresses allowed to access Better
     # Errors.
     def self.allow_ip!(addr)
       ALLOWED_IPS << IPAddr.new(addr)
+    end
+    def self.reject_url!(url_matcher)
+      REJECTED_URL_PATTERNS << url_matcher
     end
 
     allow_ip! "127.0.0.0/8"
@@ -53,7 +57,7 @@ module BetterErrors
     # @param [Hash] env
     # @return [Array]
     def call(env)
-      if allow_ip? env
+      if allow_ip?(env) && allow_url?(env)
         better_errors_call env
       else
         @app.call env
@@ -67,6 +71,12 @@ module BetterErrors
       return true unless request.ip and !request.ip.strip.empty?
       ip = IPAddr.new request.ip.split("%").first
       ALLOWED_IPS.any? { |subnet| subnet.include? ip }
+    end
+
+    def allow_url?(env)
+      request = Rack::Request.new(env)
+      return true unless request.url and !request.url.strip.empty?
+      !REJECTED_URL_PATTERNS.any? { |pattern| request.url =~ pattern }
     end
 
     def better_errors_call(env)
